@@ -40,14 +40,25 @@ List 3-5 insights that are only visible when looking at all papers simultaneousl
 ## 3. High-Density Reading List
 Point the researcher to specific pages/figures across the papers that are "Must-Reads" for their specific goal.
 
+## 4. Literature Review
+Use your search tool to execute a comprehensive literature review. Structure your output by doing the following:
+
+Contextualize: Find papers that bridge the user's core problem with the specific focus of their uploaded paper.
+
+Recommend: Provide a curated list of highly relevant, up-to-date literature, including brief summaries of why each is applicable.
+
+Identify Gaps: Critically analyze the user's current approach and highlight any significant results, recent advancements, or conflicting studies they may have ignored or missed.
 STYLE CONSTRAINTS:
 - Use $LaTeX$ for all mathematical variables, formulas, and proofs. Use single $ for inline math and double $$ for block math.
 - Keep responses modular and scannable using Markdown headers.`,
   });
 
   const response = await ai.models.generateContent({
-    model: "gemini-3.1-pro-preview",
+    model: "gemini-3-flash-preview",
     contents: { parts },
+    config: {
+      tools: [{ googleSearch: {} }],
+    },
   });
 
   return response.text || "";
@@ -96,7 +107,7 @@ STYLE CONSTRAINTS:
   });
 
   const response = await ai.models.generateContent({
-    model: "gemini-3.1-pro-preview",
+    model: "gemini-3-flash-preview",
     contents: { parts },
   });
 
@@ -148,7 +159,7 @@ STYLE CONSTRAINTS:
   });
 
   const response = await ai.models.generateContent({
-    model: "gemini-3.1-pro-preview",
+    model: "gemini-3-flash-preview",
     contents: { parts },
   });
 
@@ -225,7 +236,7 @@ Output ONLY the raw Mermaid code block, starting with \`\`\`mermaid and ending w
   ];
 
   const response = await ai.models.generateContent({
-    model: "gemini-3.1-pro-preview",
+    model: "gemini-3-flash-preview",
     contents: { parts },
   });
 
@@ -274,6 +285,48 @@ STYLE CONSTRAINTS:
 - Use properly formatted Markdown code blocks for algorithms (e.g., \`\`\`python or \`\`\`pseudocode).
 - Maintain a high academic standard.`,
   });
+
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: { parts },
+  });
+
+  return response.text || "";
+}
+
+export async function generateSimulation(
+  goal: string,
+  mergedSynthesis: string,
+  datasetInfo: string = "huggingface/time-series-datasets"
+): Promise<string> {
+  const parts: any[] = [
+    {
+      text: `You are THE VIBE-RESEARCH ENGINE's Simulation Architect.
+      
+Research Goal: "${goal}"
+
+Merged Research Synthesis (The Theory):
+${mergedSynthesis}
+
+Target Dataset Context: "${datasetInfo}"
+
+PHASE 4: SIMULATION & VALIDATION
+Your task is to write a Python simulation (using libraries like pandas, numpy, scikit-learn, or statsmodels) that illustrates the core findings of the Merged Research Synthesis using a representative time-series dataset from Hugging Face.
+
+STEPS:
+1. Data Loading Strategy: Describe how to load a relevant time-series dataset from Hugging Face (e.g., using the 'datasets' library).
+2. Simulation Code: Write a complete, well-commented Python script that:
+   - Preprocesses the data.
+   - Implements the core logic of the proposed theory/model.
+   - Visualizes the results (using matplotlib or seaborn).
+3. Theoretical Alignment: Provide a detailed commentary on whether the expected simulation results would support or contradict the proposed theory. Explain the "Why" behind the alignment.
+
+STYLE CONSTRAINTS:
+- Use $LaTeX$ for all mathematical variables and formulas.
+- Provide the Python code in a clear Markdown code block.
+- Ensure the commentary is rigorous and references specific parts of the theory.`,
+    },
+  ];
 
   const response = await ai.models.generateContent({
     model: "gemini-3.1-pro-preview",

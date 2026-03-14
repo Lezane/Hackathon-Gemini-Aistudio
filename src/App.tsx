@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Upload, FileText, ArrowRight, FlaskConical, Loader2, CheckCircle2, XCircle, AlertCircle, Download, GitMerge, Layout, ShieldCheck } from 'lucide-react';
+import { Upload, FileText, ArrowRight, FlaskConical, Loader2, CheckCircle2, XCircle, AlertCircle, Download, GitMerge, Layout, ShieldCheck, ZoomIn, Minimize2 } from 'lucide-react';
 import { MarkdownRenderer } from './components/MarkdownRenderer';
 import { Mermaid } from './components/Mermaid';
 import { 
@@ -9,10 +9,9 @@ import {
   generatePaperDiagram,
   generateMergedSynthesis,
   generateFormalProof,
+  generateSimulation,
   PdfDocument 
 } from './services/geminiService';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
 
 type Phase = 0 | 1 | 2 | 3 | 4;
 
@@ -40,6 +39,9 @@ export default function App() {
 
   // Phase 4 Data (Experiment)
   const [experimentFactory, setExperimentFactory] = useState('');
+  const [simulation, setSimulation] = useState('');
+  const [generatingSimulation, setGeneratingSimulation] = useState(false);
+  const [zoomedDiagram, setZoomedDiagram] = useState<{ name: string, chart: string } | null>(null);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -49,13 +51,13 @@ export default function App() {
     }
     
     const newPdfs: PdfDocument[] = [...pdfs];
-    for (const file of files) {
+    const uploadPromises = files.map(file => {
       if (file.type !== 'application/pdf') {
         setError("Only PDF files are allowed.");
-        return;
+        return Promise.resolve();
       }
-      const reader = new FileReader();
-      const promise = new Promise<void>((resolve, reject) => {
+      return new Promise<void>((resolve, reject) => {
+        const reader = new FileReader();
         reader.onload = () => {
           const base64 = (reader.result as string).split(',')[1];
           newPdfs.push({
@@ -66,10 +68,11 @@ export default function App() {
           resolve();
         };
         reader.onerror = reject;
+        reader.readAsDataURL(file);
       });
-      reader.readAsDataURL(file);
-      await promise;
-    }
+    });
+
+    await Promise.all(uploadPromises);
     setPdfs(newPdfs);
     setError(null);
     if (fileInputRef.current) {
@@ -142,30 +145,6 @@ export default function App() {
     }
   };
 
-  const exportToPdf = async () => {
-    if (!mergedPaperRef.current) return;
-    setLoading(true);
-    try {
-      const canvas = await html2canvas(mergedPaperRef.current, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#0a0a0a'
-      });
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const imgProps = pdf.getImageProperties(imgData);
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-      
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save('merged-research-synthesis.pdf');
-    } catch (err) {
-      setError("Failed to export PDF.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handlePhase4Submit = async () => {
     setLoading(true);
     setError(null);
@@ -180,6 +159,19 @@ export default function App() {
     }
   };
 
+  const handleGenerateSimulation = async () => {
+    setGeneratingSimulation(true);
+    setError(null);
+    try {
+      const result = await generateSimulation(goal, mergedSynthesis);
+      setSimulation(result);
+    } catch (err: any) {
+      setError(err.message || "Failed to generate Simulation.");
+    } finally {
+      setGeneratingSimulation(false);
+    }
+  };
+
   const resetApp = () => {
     setPhase(0);
     setGoal('');
@@ -187,6 +179,7 @@ export default function App() {
     setSynthesisMap('');
     setDiagrams({});
     setExperimentFactory('');
+    setSimulation('');
     setMergedSynthesis('');
     setFormalProof('');
     setError(null);
@@ -359,11 +352,20 @@ export default function App() {
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         {Object.entries(diagrams).map(([name, chart]) => (
-                          <div key={name} className="bg-white/5 border border-white/10 rounded-xl p-6 space-y-4">
-                            <h4 className="text-sm font-mono text-emerald-400 flex items-center gap-2">
-                              <FileText className="w-4 h-4" />
-                              {name}
-                            </h4>
+                          <div key={name} className="bg-white/5 border border-white/10 rounded-xl p-6 space-y-4 relative group">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-sm font-mono text-emerald-400 flex items-center gap-2">
+                                <FileText className="w-4 h-4" />
+                                {name}
+                              </h4>
+                              <button 
+                                onClick={() => setZoomedDiagram({ name, chart })}
+                                className="p-1.5 bg-white/5 border border-white/10 rounded-md text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 transition-all opacity-0 group-hover:opacity-100"
+                                title="Zoom In"
+                              >
+                                <ZoomIn className="w-4 h-4" />
+                              </button>
+                            </div>
                             <Mermaid chart={chart} />
                           </div>
                         ))}
@@ -390,14 +392,6 @@ export default function App() {
                 </div>
                 <div className="flex gap-2">
                   <button 
-                    onClick={exportToPdf}
-                    disabled={loading}
-                    className="px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-xs font-mono hover:bg-white/20 transition-colors flex items-center gap-2"
-                  >
-                    <Download className="w-3 h-3" />
-                    EXPORT PDF
-                  </button>
-                  <button 
                     onClick={handleProofSubmit}
                     disabled={loading}
                     className="px-4 py-2 bg-emerald-500 text-black rounded-lg text-xs font-bold hover:bg-emerald-400 transition-colors flex items-center gap-2"
@@ -417,8 +411,17 @@ export default function App() {
                     <h3 className="text-xl font-semibold text-white">Appendix: Source Architectures</h3>
                     <div className="grid grid-cols-1 gap-8">
                       {Object.entries(diagrams).map(([name, chart]) => (
-                        <div key={name} className="space-y-4">
-                          <h4 className="text-sm font-mono text-emerald-400">{name}</h4>
+                        <div key={name} className="space-y-4 relative group">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-mono text-emerald-400">{name}</h4>
+                            <button 
+                              onClick={() => setZoomedDiagram({ name, chart })}
+                              className="p-1.5 bg-white/5 border border-white/10 rounded-md text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 transition-all opacity-0 group-hover:opacity-100"
+                              title="Zoom In"
+                            >
+                              <ZoomIn className="w-4 h-4" />
+                            </button>
+                          </div>
                           <Mermaid chart={chart} />
                         </div>
                       ))}
@@ -479,15 +482,45 @@ export default function App() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="space-y-12"
             >
-              <div className="space-y-1">
-                <h2 className="text-2xl font-semibold text-white">Experiment Factory</h2>
-                <p className="text-sm text-slate-400 font-mono">PHASE 04: VALIDATION</p>
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <h2 className="text-2xl font-semibold text-white">Experiment Factory</h2>
+                  <p className="text-sm text-slate-400 font-mono">PHASE 04: VALIDATION</p>
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={handleGenerateSimulation}
+                    disabled={generatingSimulation || loading}
+                    className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-xs font-mono hover:bg-white/10 transition-colors flex items-center gap-2"
+                  >
+                    {generatingSimulation ? <Loader2 className="w-3 h-3 animate-spin" /> : <FlaskConical className="w-3 h-3" />}
+                    RUN SIMULATION
+                  </button>
+                </div>
               </div>
 
-              <div className="bg-white/5 border border-white/10 rounded-3xl p-8 lg:p-12">
-                <div className="prose prose-invert max-w-none">
-                  <MarkdownRenderer content={experimentFactory} />
+              <div className="space-y-8">
+                <div className="bg-white/5 border border-white/10 rounded-3xl p-8 lg:p-12">
+                  <div className="prose prose-invert max-w-none">
+                    <MarkdownRenderer content={experimentFactory} />
+                  </div>
                 </div>
+
+                {simulation && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-emerald-500/5 border border-emerald-500/20 rounded-3xl p-8 lg:p-12 space-y-6"
+                  >
+                    <h3 className="text-xl font-semibold text-emerald-400 flex items-center gap-2">
+                      <FlaskConical className="w-5 h-5" />
+                      Hugging Face Time-Series Simulation
+                    </h3>
+                    <div className="prose prose-invert max-w-none">
+                      <MarkdownRenderer content={simulation} />
+                    </div>
+                  </motion.div>
+                )}
               </div>
 
               <div className="flex justify-center gap-4">
@@ -508,6 +541,45 @@ export default function App() {
           )}
         </AnimatePresence>
       </main>
+
+      {/* Zoom Modal */}
+      <AnimatePresence>
+        {zoomedDiagram && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/90 backdrop-blur-xl"
+            onClick={() => setZoomedDiagram(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative w-full max-w-6xl max-h-[90vh] bg-slate-900 border border-white/10 rounded-3xl p-8 overflow-auto shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-8 sticky top-0 bg-slate-900/80 backdrop-blur-md py-2 z-10">
+                <div className="flex items-center gap-3">
+                  <FileText className="w-5 h-5 text-emerald-400" />
+                  <h3 className="text-xl font-semibold text-white">{zoomedDiagram.name}</h3>
+                </div>
+                <button
+                  onClick={() => setZoomedDiagram(null)}
+                  className="p-2 bg-white/5 border border-white/10 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-all"
+                >
+                  <Minimize2 className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="flex justify-center">
+                <div className="w-full min-h-[500px]">
+                  <Mermaid chart={zoomedDiagram.chart} />
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
